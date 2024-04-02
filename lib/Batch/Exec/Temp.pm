@@ -246,7 +246,7 @@ Add description here
 sub mktmpdir {
 	my $self = shift;
 
-	my $dn = $self->_register_tmpfile('d');
+	my $dn = $self->register('d');
 
 	$self->log->info("created temporary directory [$dn]");
 
@@ -262,7 +262,7 @@ Add description here
 sub mktmpfile {
 	my $self = shift;
 
-	my $pn = $self->_register_tmpfile('f');
+	my $pn = $self->register('f');
 
 	$self->log->info("created temporary file [$pn]")
 		if ($self->{'echo'});
@@ -334,16 +334,16 @@ sub purge {	# search for old temp files and remove
 	return $count;
 }
 
-=item OBJ->_register_tmpfile
+=item OBJ->register
 
 Add description here
 
 =cut
 
-sub _register_tmpfile {
+sub register {
 	my $self = shift;
 	my $type = shift;
-	confess "SYNTAX: _register_tmpfile(EXPR)" unless defined ($type);
+	confess "SYNTAX: register(EXPR)" unless defined ($type);
 
 	my $pn = $self->_mktmp($type);
 
