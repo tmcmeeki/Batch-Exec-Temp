@@ -7,7 +7,7 @@ use strict;
 use Data::Dumper;
 use Logfer qw/ :all /;
 #use Log::Log4perl qw/ :easy /;
-use Test::More tests => 105;
+use Test::More tests => 82;
 
 BEGIN { use_ok('Batch::Exec::Temp') };
 
@@ -25,25 +25,22 @@ my $cycle = 1;
 
 
 # -------- main --------
-my $obn1 = Batch::Exec::Temp->new;
-isa_ok($obn1, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
+my $obt1 = Batch::Exec::Temp->new;
+isa_ok($obt1, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
-my $obn2 = Batch::Exec::Temp->new(global => 0);
-isa_ok($obn2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
-
-my $obn3 = Batch::Exec::Temp->new;
-isa_ok($obn3, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
+my $obt2 = Batch::Exec::Temp->new(retain => 1);
+isa_ok($obt2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
 
 # -------- simple attributes --------
-my @attr = $obn1->Attributes;
-my $attrs = 22;
+my @attr = $obt1->Attributes;
+my $attrs = 20;
 is(scalar(@attr), $attrs,		"class attributes");
 is(shift @attr, "Batch::Exec::Temp",	"class okay");
 
 for my $attr (@attr) {
 
-	my $dfl = $obn1->$attr;
+	my $dfl = $obt1->$attr;
 
 	my ($set, $type); if (defined $dfl && $dfl =~ /^[\-\d\.]+$/) {
 		$set = -1.1;
@@ -53,55 +50,27 @@ for my $attr (@attr) {
 		$type = "s";
 	}
 
-	is($obn1->$attr($set), $set,	"$attr set cycle $cycle");
-	isnt($obn1->$attr, $dfl,	"$attr check");
+	is($obt1->$attr($set), $set,	"$attr set cycle $cycle");
+	isnt($obt1->$attr, $dfl,	"$attr check");
 
-	$log->debug(sprintf "attr [$attr]=%s", $obn1->$attr);
+	$log->debug(sprintf "attr [$attr]=%s", $obt1->$attr);
 
 	if ($type eq "s") {
 		my $ck = (defined $dfl) ? $dfl : "_null_";
 
-		ok($obn1->$attr ne $ck,	"$attr string");
+		ok($obt1->$attr ne $ck,	"$attr string");
 	} else {
-		ok($obn1->$attr < 0,	"$attr number");
+		ok($obt1->$attr < 0,	"$attr number");
 	}
-	is($obn1->$attr($dfl), $dfl,	"$attr reset");
+	is($obt1->$attr($dfl), $dfl,	"$attr reset");
 
         $cycle++;
 }
 
 
 # -------- Inherit --------
-is($obn1->Inherit($obn2), $attrs - 1,	"inherit same attribute count");
+is($obt1->Inherit($obt2), $attrs - 1,	"inherit same attribute count");
 
-
-# -------- global --------
-is($obn1->global, 1, 		"global default");
-is($obn2->global, 0, 		"global set $cycle"); $cycle++;
-is($obn3->global, 1, 		"global set $cycle"); $cycle++;
-
-
-# -------- null --------
-my $ren = qr/nul/;
-
-is($obn1->null, $obn2->null, 		"null consistent $cycle"); $cycle++;
-is($obn2->null, $obn3->null, 		"null consistent $cycle"); $cycle++;
-
-like($obn1->null, $ren, 		"null matches $cycle"); $cycle++;
-like($obn2->null, $ren, 		"null matches $cycle"); $cycle++;
-like($obn3->null, $ren, 		"null matches $cycle"); $cycle++;
-
-
-# -------- global versus local behaviour --------
-my $rex = qr/xxx/;
-is($obn2->null("xxx"), "xxx",		"global null override");
-
-isnt($obn1->null, $obn2->null, 		"local differentiated from global");
-is($obn1->null, $obn3->null, 		"global null consistent");
-
-like($obn1->null, $ren, 		"null matches $cycle"); $cycle++;
-like($obn2->null, $rex, 		"null matches $cycle"); $cycle++;
-like($obn3->null, $ren, 		"null matches $cycle"); $cycle++;
 
 __END__
 

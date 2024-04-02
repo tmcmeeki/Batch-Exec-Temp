@@ -15,23 +15,27 @@ Copyright (C) 2024  B<Tom McMeekin> tmcmeeki@cpan.org
 
 =head1 DESCRIPTION
 
-Add description here.
+Temporary file and folder handling.
 
 =head2 ATTRIBUTES
 
 =over 4
 
-=item OBJ->attribute1
+=item OBJ->age
 
-Get ot set the blah blah blah.  A default applies.
+Get ot set the purge age in epoch seconds.  A default applies.
 
-=item OBJ->attribute2
+=item OBJ->ext
 
-Get ot set the blah blah blah.  A default applies.
+Get ot set the extension for temporary filenames.  A default applies.
 
-=item OBJ->attribute3
+=item OBJ->retain
 
-Get ot set the blah blah blah.  A default applies.
+Get ot set automatic purge boolean.  A default applies: false.
+
+=item OBJ->tmpdir
+
+Get ot set the folder in which temporary files are created.  A default applies.
 
 =back
 
@@ -47,7 +51,11 @@ use Data::Dumper;
 
 
 # --- package constants ---
-#use constant RE_DUMMY => qr/^\s*$/;
+use constant DN_TMP_DFL => File::Spec->tmpdir;
+
+use constant EXT_TMP => ".tmp";
+
+use constant PURGE_AGE => 86400;        # epoch seconds, 3600 sec/hr = 24 hr
 
 
 # --- package globals ---
@@ -62,10 +70,12 @@ our $VERSION = sprintf "%d.%03d", q[_IDE_REVISION_] =~ /(\d+)/g;
 my $_n_objects = 0;
 
 my %_attribute = (	# _attributes are restricted; no direct get/set
-	_hidden => 1,		# boolean: class global bar value
-	attribute1 => "dummy",
-	attribute2 => RE_DUMMY,
-	attribute3 => undef,
+	_tmpfile => undef,      # a hash of temp files
+	age => PURGE_AGE,
+	ext => EXT_TMP,
+	retain => 0,            # controls automatic aged purge 
+	template => "XXXXXXXX",
+	tmpdir => DN_TMP_DFL,
 );
 
 #sub INIT { };
@@ -138,20 +148,216 @@ sub new {
 
 =over 4
 
-=item OBJ->method1(EXPR, ...)
+=item OBJ->clean
 
-Returns ___
+Delete all temp files.
 
 =cut
 
-sub method1 {
+sub clean {
 	my $self = shift;
-	my $expr = shift;
+	my $count = 0;
 
-	$self->log->logconfess("SYNTAX method1(EXPR)") unless (
-		defined($expr));
+	$self->log->trace(sprintf "tmpdir [%s] _id [%s] _tmpfile [%s]", $self->tmpdir, $self->_id, Dumper($self->_tmpfile))
+		if ($self->Alive());
 
-	return ___;
+	return $count
+		unless (defined $self->_tmpfile);
+
+	while (my $pn = pop @{ $self->_tmpfile }) {
+
+		next unless (-e $pn); # may have already been deleted elsewhere so check if it actually exists
+
+		if ($self->delete($pn)) {
+
+			push @{ $self->_tmpfile }, $pn;
+
+		} else {
+
+			$count++;
+		}
+	}
+	$self->log->info("$count temporary entries cleaned out")
+		if ($self->Alive() && $self->{'echo'});
+
+	return $count;
+}
+
+=item OBJ->hometmp
+
+Add description here
+
+=cut
+
+sub hometmp {	# read-only method!
+	my $self = shift;
+	my $dn_home = $self->homedir;
+	my $dn_tmp = File::Spec->catdir($dn_home, "tmp");
+
+	return $dn_tmp;		# nice alternative location for temp files
+}
+
+=item OBJ->default
+
+Add description here
+
+=cut
+
+sub default { 
+	my $self = shift;
+	my $dn = shift;
+
+	my $f_default = 1;
+	my $verb = "defaulted";
+
+	if (defined $dn) {	# someone has specified a directory to use
+
+		unless ($self->ckdir_rwx($dn)) {
+
+			$self->tmpdir($dn);
+
+			$verb = "set";
+
+			$f_default = 0;
+
+		} else {
+			$self->log->warn("possible invalid directory specified [$dn]")
+		}
+	}
+
+	if ($f_default) {	# null or invalid directory, reset defaults
+
+		$dn = DN_TMP_DFL;
+
+		$self->tmpdir($dn);
+	} 
+	$self->log->info("temporary directory $verb to [$dn]")
+		if ($self->{'echo'});
+	
+	return $self->tmpdir;
+}
+
+=item OBJ->mktmpdir
+
+Add description here
+
+=cut
+
+sub mktmpdir {
+	my $self = shift;
+
+	my $dn = $self->_register_tmpfile('d');
+
+	$self->log->info("created temporary directory [$dn]");
+
+	return $dn;
+}
+
+=item OBJ->mktmpfile
+
+Add description here
+
+=cut
+
+sub mktmpfile {
+	my $self = shift;
+
+	my $pn = $self->_register_tmpfile('f');
+
+	$self->log->info("created temporary file [$pn]")
+		if ($self->{'echo'});
+
+	return $pn;
+}
+
+=item OBJ->purge
+
+Add description here
+
+=cut
+
+sub purge {	# search for old temp files and remove
+	my $self = shift;
+
+	my $now = time;
+	my $count = 0;
+	my $dn = $self->tmpdir;
+	my $rep = $self->prefix;
+
+	$rep =~ s/[\.\-]/\\$&/g;
+
+	my $prep = sub { # pre-process for name matches (strings not files!)
+
+#		$self->log->debug(sprintf "prep rep [$rep] argv [%s]", Dumper(\@_));
+		my @valid; for (@_) {
+
+			push @valid, $_ if ($_ =~ /^$rep/);
+		}
+		$self->log->trace(sprintf "prep valid [%s]", Dumper(\@valid));
+
+		return @valid;
+	};
+	my $wanted = sub { 
+		my $pn = $File::Find::name;
+
+		return if ($pn eq $dn);	# don't really need to purge this!
+
+		return unless (-f $pn || -d $pn);
+
+		$self->log->trace("matched [$pn]");
+
+		my ($atime,$mtime, $ctime) = (stat($pn))[8..10];
+
+		my $age = ($now - $mtime);
+
+		if ($self->Alive) {
+
+			$self->log->trace("now [$now] atime [$atime] ctime [$ctime] mtime [$mtime]");
+
+			$self->log->trace(sprintf "age [$age] threshold [%d]", $self->age);
+		}
+
+		if ($age > $self->age) {
+			$count++ unless ($self->delete($pn));
+		}
+	};
+	return 0 if($self->ckdir_rwx($dn));
+
+	$self->log->info(sprintf "finding aged temporary files under [$dn]")
+		if ($self->Alive()); # && $self->{'echo'});
+
+	finddepth({ preprocess => $prep, wanted => $wanted, no_chdir => 1 }, $dn);
+
+	$self->log->info("$count temporary entries purged")
+		if ($self->Alive()); # && $self->{'echo'});
+
+	return $count;
+}
+
+=item OBJ->_register_tmpfile
+
+Add description here
+
+=cut
+
+sub _register_tmpfile {
+	my $self = shift;
+	my $type = shift;
+	confess "SYNTAX: _register_tmpfile(EXPR)" unless defined ($type);
+
+	my $pn = $self->_mktmp($type);
+
+	if (defined $self->{'_tmpfile'}) {
+
+		push @{ $self->{'_tmpfile'} }, $pn;
+
+	} else {
+		$self->{'_tmpfile'} = [ $pn ];
+	}
+
+	$self->log->trace(sprintf "registered new temp entry [$pn] in [%s]", Dumper($self->{'_tmpfile'}));
+
+	return $pn;
 }
 
 =back
