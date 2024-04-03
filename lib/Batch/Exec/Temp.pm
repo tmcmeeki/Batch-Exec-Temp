@@ -33,10 +33,6 @@ Get ot set the extension for temporary filenames.  A default applies.
 
 Get ot set automatic purge boolean.  A default applies: false.
 
-=item OBJ->tmpdir
-
-Get ot set the folder in which temporary files are created.  A default applies.
-
 =back
 
 =cut
@@ -48,6 +44,8 @@ use parent 'Batch::Exec';
 # --- includes ---
 use Carp qw(cluck confess);
 use Data::Dumper;
+
+use File::Spec;
 
 
 # --- package constants ---
@@ -71,11 +69,11 @@ my $_n_objects = 0;
 
 my %_attribute = (	# _attributes are restricted; no direct get/set
 	_tmpfile => undef,      # a hash of temp files
+	_tmpdir => undef,
 	age => PURGE_AGE,
 	ext => EXT_TMP,
 	retain => 0,            # controls automatic aged purge 
 	template => "XXXXXXXX",
-	tmpdir => DN_TMP_DFL,
 );
 
 #sub INIT { };
@@ -139,7 +137,7 @@ sub new {
 		$self->$method($value);
 	}
 	# ___ additional class initialisation here ___
-#	$self->log->debug(sprintf "self [%s]", Dumper($self));
+	$self->reset;
 
 	return $self;
 }
@@ -178,28 +176,34 @@ sub clean {
 		}
 	}
 	$self->log->info("$count temporary entries cleaned out")
-		if ($self->Alive() && $self->{'echo'});
+		if ($self->Alive() && $self->echo);
 
 	return $count;
 }
 
 =item OBJ->hometmp
 
-Add description here
+Read-only method to generate a temporary folder name proximal to the user's
+home directory.  This does not check for the existence of said folder, so 
+it can be used non-fatally.
 
 =cut
 
 sub hometmp {	# read-only method!
 	my $self = shift;
+
 	my $dn_home = $self->homedir;
 	my $dn_tmp = File::Spec->catdir($dn_home, "tmp");
 
 	return $dn_tmp;		# nice alternative location for temp files
 }
 
-=item OBJ->default
+=item OBJ->default([EXPR])
 
-Add description here
+Sets the current folder in which temporary files will be created.
+If no argument is passed, or if the argument passed is not viable,
+this will reset the folder to a failsafe default.
+Returns the folder name.
 
 =cut
 
@@ -207,34 +211,27 @@ sub default {
 	my $self = shift;
 	my $dn = shift;
 
-	my $f_default = 1;
-	my $verb = "defaulted";
+	my $f_dfl = 1; if (defined $dn) {	# directory specified
 
-	if (defined $dn) {	# someone has specified a directory to use
+		my $msg1 = "temporary directory defaulted to [$dn]";
+		my $msg2 = "possible invalid directory specified [$dn]";
 
-		unless ($self->ckdir_rwx($dn)) {
+		if ($self->is_rwx($dn)) {
 
-			$self->tmpdir($dn);
+			$self->{'_tmpdir'} = $dn;
 
-			$verb = "set";
+			$f_dfl = 0;
 
-			$f_default = 0;
+			$self->log->info($msg1) if ($self->echo);
 
 		} else {
-			$self->log->warn("possible invalid directory specified [$dn]")
+			$self->log->warn($msg2);
 		}
 	}
+	$self->reset
+		if ($f_dfl); # null or invalid directory, reset default
 
-	if ($f_default) {	# null or invalid directory, reset defaults
-
-		$dn = DN_TMP_DFL;
-
-		$self->tmpdir($dn);
-	} 
-	$self->log->info("temporary directory $verb to [$dn]")
-		if ($self->{'echo'});
-	
-	return $self->tmpdir;
+	return $self->{'_tmpdir'};
 }
 
 =item OBJ->mktmpdir
@@ -265,7 +262,7 @@ sub mktmpfile {
 	my $pn = $self->register('f');
 
 	$self->log->info("created temporary file [$pn]")
-		if ($self->{'echo'});
+		if ($self->echo);
 
 	return $pn;
 }
@@ -321,15 +318,15 @@ sub purge {	# search for old temp files and remove
 			$count++ unless ($self->delete($pn));
 		}
 	};
-	return 0 if($self->ckdir_rwx($dn));
+	return 0 if($self->is_rwx($dn));
 
 	$self->log->info(sprintf "finding aged temporary files under [$dn]")
-		if ($self->Alive()); # && $self->{'echo'});
+		if ($self->Alive()); # && $self->echo);
 
 	finddepth({ preprocess => $prep, wanted => $wanted, no_chdir => 1 }, $dn);
 
 	$self->log->info("$count temporary entries purged")
-		if ($self->Alive()); # && $self->{'echo'});
+		if ($self->Alive()); # && $self->echo);
 
 	return $count;
 }
@@ -358,6 +355,38 @@ sub register {
 	$self->log->trace(sprintf "registered new temp entry [$pn] in [%s]", Dumper($self->{'_tmpfile'}));
 
 	return $pn;
+}
+
+=item OBJ->reset
+
+Reset the default folder in which temporary files will be created.
+This is a failsafe routine, provinding a viable location for files.
+
+=cut
+
+sub reset { 
+	my $self = shift;
+
+	my $dn = DN_TMP_DFL;
+
+	$self->log->info("resetting temporary location to [$dn]")
+		if ($self->echo);
+
+	$self->{'_tmpdir'} = $dn;
+
+	return $self->tmpdir;
+}
+
+=item OBJ->tmpdir
+
+Read-only method to return the current temporary folder.
+
+=cut
+
+sub tmpdir {
+	my $self = shift;
+
+	return $self->{'_tmpdir'};
 }
 
 =back

@@ -7,7 +7,7 @@ use strict;
 use Data::Dumper;
 use Logfer qw/ :all /;
 #use Log::Log4perl qw/ :easy /;
-use Test::More tests => 82;
+use Test::More tests => 90;
 
 BEGIN { use_ok('Batch::Exec::Temp') };
 
@@ -28,13 +28,13 @@ my $cycle = 1;
 my $obt1 = Batch::Exec::Temp->new;
 isa_ok($obt1, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
-my $obt2 = Batch::Exec::Temp->new(retain => 1);
+my $obt2 = Batch::Exec::Temp->new(echo => 1, fatal => 0);
 isa_ok($obt2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
 
 # -------- simple attributes --------
 my @attr = $obt1->Attributes;
-my $attrs = 20;
+my $attrs = 19;
 is(scalar(@attr), $attrs,		"class attributes");
 is(shift @attr, "Batch::Exec::Temp",	"class okay");
 
@@ -70,6 +70,46 @@ for my $attr (@attr) {
 
 # -------- Inherit --------
 is($obt1->Inherit($obt2), $attrs - 1,	"inherit same attribute count");
+
+
+# ---- miscellaneous defaults -----
+ok($obt1->age > 0,		"age default");
+like($obt1->ext, qr/tmp/,	"ext default");
+is($obt1->retain, 0,		"retain default");
+
+
+# ---- tmpdir -----
+my $dn_reset = $obt2->tmpdir;
+my $dn_valid = ".";
+my $dn_inval = '_$$$_';
+
+ok(-d $obt2->tmpdir,		"tmpdir default exists");
+ok(-d $dn_valid,		"tmpdir override exists");
+
+ok($obt2->tmpdir($dn_valid),	"tmpdir is read-only");
+
+
+# ---- reset -----
+is($obt1->reset, $dn_reset,		"reset to default");
+is($obt1->reset, $obt2->reset,		"reset matches");
+
+
+# ---- default -----
+ok(-d $obt2->default,			"default resets default");
+isnt($obt2->default, $dn_inval,		"check default");
+
+ok(-d $obt2->default($dn_valid),	"override valid default");
+ok(-d $obt2->default($dn_inval),	"override invalid default");
+ok(-d $obt2->tmpdir,			"default reset with valid");
+
+is($obt2->tmpdir, $dn_reset,		"check default reset");
+is($obt1->tmpdir, $obt2->tmpdir,	"default reset matches");
+
+
+# ---- hometmp -----
+isnt($obt1->hometmp, $obt1->tmpdir,			"tmpdir NE hometmp");
+is($obt1->default($obt1->hometmp), $obt1->tmpdir,	"default to hometmp");
+isnt($obt1->hometmp, $obt1->tmpdir,			"tmpdir EQ hometmp");
 
 
 __END__

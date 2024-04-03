@@ -67,44 +67,9 @@ ok($ofu1->delete($td1) == 0,	"tmpdir delete");
 ok(! -d $td1,			"tmpdir dne");
 
 
-# ---- tmpdir and default -----
-my $ofu3 = Fileutils->new;
-isa_ok($ofu3, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
-
-ok(-d $ofu3->tmpdir,		"tmpdir default exists");
-my $dn_reset = $ofu3->tmpdir;
-my $dn_valid = ".";
-ok(-d $dn_valid,		"tmpdir override exists");
-ok(-d $ofu3->tmpdir($dn_valid),	"tmpdir valid override");
-is($ofu3->tmpdir, $dn_valid,	"tmpdir valid matches");
-
-# tmpdir will work even with invalid directory, thus need to use "default"
-my $dn_inval = '_$$$_';
-ok(! -d $dn_inval,		"tmpdir override DNE");
-ok(! -d $ofu3->tmpdir($dn_inval),	"tmpdir invalid override");
-is($ofu3->tmpdir, $dn_inval,	"tmpdir invalid matches");
-
-ok(-d $ofu3->default,		"reset default");
-isnt($ofu3->default, $dn_inval,	"check default");
-ok(-d $ofu3->default($dn_valid),	"override valid default");
-is($ofu3->fatal(0), 0,		"set non-fatal");
-ok(-d $ofu3->default($dn_inval),	"override invalid default");
-ok(-d $ofu3->tmpdir,		"default reset with valid");
-is($ofu3->tmpdir, $dn_reset,	"check default reset");
-is($ofu3->fatal(1), 1,		"set fatal");
-
-
 # ---- alternative temporary directory -----
 my $ofu2 = Batch::Exec::Temp->new;
 isa_ok($ofu2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
-
-my $dn_tmp = $ofu2->hometmp;
-my $dn_dfl = $ofu2->default;
-isnt($dn_dfl, $dn_tmp,		"default DNE hometmp");
-
-$ofu2->default($dn_tmp);
-$dn_dfl = $ofu2->tmpdir;
-is($dn_dfl, $dn_tmp,		"default now hometmp");
 
 my $tf2 = $ofu2->mktmpfile;
 ok( -f $tf2,	"mktmpfile hometmp type");
