@@ -44,8 +44,9 @@ use parent 'Batch::Exec';
 # --- includes ---
 use Carp qw(cluck confess);
 use Data::Dumper;
-
+use File::Find;
 use File::Spec;
+use File::Temp qw/ tempfile tempdir /;
 
 
 # --- package constants ---
@@ -78,6 +79,12 @@ my %_attribute = (	# _attributes are restricted; no direct get/set
 
 #sub INIT { };
 
+=head2 CLASS METHODS
+
+=over 4
+
+=cut
+
 sub AUTOLOAD {
 	my $self = shift;
 	my $type = ref($self) or confess "$self is not an object";
@@ -102,7 +109,7 @@ sub DESTROY {
 	local($., $@, $!, $^E, $?);
 	my $self = shift;
 
-	#printf "DEBUG destroy object id [%s]\n", $self->{'_id'});
+	#printf "DEBUG destroy object id [%s]\n", $self->Id;
 
 	-- ${ $self->{_n_objects} };
 }
@@ -142,7 +149,9 @@ sub new {
 	return $self;
 }
 
-=head2 METHODS
+=back
+
+=head2 OBJECT METHODS
 
 =over 4
 
@@ -156,19 +165,19 @@ sub clean {
 	my $self = shift;
 	my $count = 0;
 
-	$self->log->trace(sprintf "tmpdir [%s] _id [%s] _tmpfile [%s]", $self->tmpdir, $self->_id, Dumper($self->_tmpfile))
-		if ($self->Alive());
+	$self->log->trace(sprintf "tmpdir [%s] Id [%s] _tmpfile [%s]", $self->tmpdir, $self->Id, Dumper($self->{'_tmpfile'}))
+		if ($self->Alive);
 
 	return $count
-		unless (defined $self->_tmpfile);
+		unless (defined $self->{'_tmpfile'});
 
-	while (my $pn = pop @{ $self->_tmpfile }) {
+	while (my $pn = pop @{ $self->{'_tmpfile'} }) {
 
 		next unless (-e $pn); # may have already been deleted elsewhere so check if it actually exists
 
 		if ($self->delete($pn)) {
 
-			push @{ $self->_tmpfile }, $pn;
+			push @{ $self->{'_tmpfile'} }, $pn;
 
 		} else {
 
@@ -176,26 +185,9 @@ sub clean {
 		}
 	}
 	$self->log->info("$count temporary entries cleaned out")
-		if ($self->Alive() && $self->echo);
+		if ($self->Alive && $self->echo);
 
 	return $count;
-}
-
-=item OBJ->hometmp
-
-Read-only method to generate a temporary folder name proximal to the user's
-home directory.  This does not check for the existence of said folder, so 
-it can be used non-fatally.
-
-=cut
-
-sub hometmp {	# read-only method!
-	my $self = shift;
-
-	my $dn_home = $self->homedir;
-	my $dn_tmp = File::Spec->catdir($dn_home, "tmp");
-
-	return $dn_tmp;		# nice alternative location for temp files
 }
 
 =item OBJ->default([EXPR])
@@ -234,29 +226,14 @@ sub default {
 	return $self->{'_tmpdir'};
 }
 
-=item OBJ->mktmpdir
+=item OBJ->file
 
-Add description here
-
-=cut
-
-sub mktmpdir {
-	my $self = shift;
-
-	my $dn = $self->register('d');
-
-	$self->log->info("created temporary directory [$dn]");
-
-	return $dn;
-}
-
-=item OBJ->mktmpfile
-
-Add description here
+Convenience function to generate a unique temporary file name.
+An empty file will will be created and the pathname to it returned.
 
 =cut
 
-sub mktmpfile {
+sub file {
 	my $self = shift;
 
 	my $pn = $self->register('f');
@@ -267,13 +244,75 @@ sub mktmpfile {
 	return $pn;
 }
 
-=item OBJ->purge
+=item OBJ->folder
 
-Add description here
+Convenience function to generate a unique temporary folder name.
+A folder will will be created and the pathname to it returned.
 
 =cut
 
-sub purge {	# search for old temp files and remove
+sub folder {
+	my $self = shift;
+
+	my $dn = $self->register('d');
+
+	$self->log->info("created temporary directory [$dn]")
+		if ($self->echo);
+
+	return $dn;
+}
+
+=item OBJ->generate(EXPR)
+
+Generates the pathname for a temporary file or directory based on the EXPR
+passed, which is(either 'f' or 'd').
+
+Returns a pathname.
+
+=cut
+
+sub generate {
+	my $self = shift;
+	my $type = shift;
+	confess "SYNTAX: generate(EXPR)" unless (defined $type);
+	my $pn;
+
+	#my $tpl = join('.', $self->prefix . $self->ext, $self->template);
+	my $tpl = join('_', $self->prefix, $self->template);
+
+	$self->log->trace("type [$type] tpl [$tpl]");
+	$self->log->trace(sprintf "prefix [%s] dir [%s]", $self->prefix, $self->tmpdir);
+
+	if ($type eq 'f') {
+		my $fh;
+
+		($fh,$pn) = tempfile($tpl, DIR => $self->tmpdir, SUFFIX => $self->ext);
+#	don't think we need this for temp files; maybe just output files
+#		$self->header($fh)
+#			if ($self->{'autoheader'});
+
+		close($fh);	# don't need this open
+
+	} elsif ($type eq 'd') {
+
+		$pn = tempdir($tpl, DIR => $self->tmpdir);
+
+	} else {
+		$self->log->logconfess("FATAL invalid type [$type]");
+	}
+
+	$self->log->debug("type [$type] pn [$pn]");
+
+	return $pn;
+}
+
+=item OBJ->purge
+
+Search for old temporary files and remove if older than the purge age.
+
+=cut
+
+sub purge {	
 	my $self = shift;
 
 	my $now = time;
@@ -283,14 +322,16 @@ sub purge {	# search for old temp files and remove
 
 	$rep =~ s/[\.\-]/\\$&/g;
 
+	$self->log->debug("now [$now] dn [$dn] rep [$rep]");
+
 	my $prep = sub { # pre-process for name matches (strings not files!)
 
-#		$self->log->debug(sprintf "prep rep [$rep] argv [%s]", Dumper(\@_));
+		$self->log->trace(sprintf "prep rep [$rep] argv [%s]", Dumper(\@_));
 		my @valid; for (@_) {
 
 			push @valid, $_ if ($_ =~ /^$rep/);
 		}
-		$self->log->trace(sprintf "prep valid [%s]", Dumper(\@valid));
+		$self->log->debug(sprintf "prep valid [%s]", Dumper(\@valid));
 
 		return @valid;
 	};
@@ -301,7 +342,7 @@ sub purge {	# search for old temp files and remove
 
 		return unless (-f $pn || -d $pn);
 
-		$self->log->trace("matched [$pn]");
+		$self->log->debug("matched [$pn]");
 
 		my ($atime,$mtime, $ctime) = (stat($pn))[8..10];
 
@@ -309,24 +350,24 @@ sub purge {	# search for old temp files and remove
 
 		if ($self->Alive) {
 
-			$self->log->trace("now [$now] atime [$atime] ctime [$ctime] mtime [$mtime]");
+			$self->log->debug("now [$now] atime [$atime] ctime [$ctime] mtime [$mtime]");
 
-			$self->log->trace(sprintf "age [$age] threshold [%d]", $self->age);
+			$self->log->debug(sprintf "age [$age] threshold [%d]", $self->age);
 		}
 
 		if ($age > $self->age) {
 			$count++ unless ($self->delete($pn));
 		}
 	};
-	return 0 if($self->is_rwx($dn));
+	return 0 unless ($self->is_rwx($dn));
 
 	$self->log->info(sprintf "finding aged temporary files under [$dn]")
-		if ($self->Alive()); # && $self->echo);
+		if ($self->Alive);
 
-	finddepth({ preprocess => $prep, wanted => $wanted, no_chdir => 1 }, $dn);
+	finddepth({preprocess => $prep, wanted => $wanted, no_chdir => 1}, $dn);
 
 	$self->log->info("$count temporary entries purged")
-		if ($self->Alive()); # && $self->echo);
+		if ($self->Alive);
 
 	return $count;
 }
@@ -342,7 +383,7 @@ sub register {
 	my $type = shift;
 	confess "SYNTAX: register(EXPR)" unless defined ($type);
 
-	my $pn = $self->_mktmp($type);
+	my $pn = $self->generate($type);
 
 	if (defined $self->{'_tmpfile'}) {
 
@@ -352,7 +393,7 @@ sub register {
 		$self->{'_tmpfile'} = [ $pn ];
 	}
 
-	$self->log->trace(sprintf "registered new temp entry [$pn] in [%s]", Dumper($self->{'_tmpfile'}));
+	$self->log->debug(sprintf "registered [$pn] in [%s]", Dumper($self->{'_tmpfile'}));
 
 	return $pn;
 }
@@ -397,13 +438,13 @@ The following method aliases have also been defined:
 
 	alias		base method
 	------------	------------	
-	isnt_foo	is_notfoo
-	isnt_bar	is_notbar
+	mktmpdir	folder
+	mktmpfile	file
 
 =cut
 
-#*isnt_foo = \&is_notfoo;
-#*isnt_bar = \&is_notbar;
+*mktmpdir = \&folder;
+*mktmpfile = \&file;
 
 #sub END { }
 

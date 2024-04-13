@@ -7,7 +7,7 @@ use strict;
 use Data::Dumper;
 use Logfer qw/ :all /;
 #use Log::Log4perl qw/ :easy /;
-use Test::More tests => 90;
+use Test::More tests => 101;
 
 BEGIN { use_ok('Batch::Exec::Temp') };
 
@@ -34,7 +34,7 @@ isa_ok($obt2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
 # -------- simple attributes --------
 my @attr = $obt1->Attributes;
-my $attrs = 19;
+my $attrs = 21;
 is(scalar(@attr), $attrs,		"class attributes");
 is(shift @attr, "Batch::Exec::Temp",	"class okay");
 
@@ -104,12 +104,6 @@ ok(-d $obt2->tmpdir,			"default reset with valid");
 
 is($obt2->tmpdir, $dn_reset,		"check default reset");
 is($obt1->tmpdir, $obt2->tmpdir,	"default reset matches");
-
-
-# ---- hometmp -----
-isnt($obt1->hometmp, $obt1->tmpdir,			"tmpdir NE hometmp");
-is($obt1->default($obt1->hometmp), $obt1->tmpdir,	"default to hometmp");
-isnt($obt1->hometmp, $obt1->tmpdir,			"tmpdir EQ hometmp");
 
 
 __END__

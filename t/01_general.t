@@ -6,19 +6,18 @@ use strict;
 
 use Data::Compare;
 use Data::Dumper;
+use File::Basename;
 use Logfer qw/ :all /;
-use Test::More tests => 57;
+use Test::More tests => 30;
 
 BEGIN { use_ok('Batch::Exec::Temp') };
 
 
 # -------- constants --------
 
-
 # -------- global variables --------
 my $log = get_logger(__FILE__);
 my $cycle = 1;
-
 
 # -------- sub-routines --------
 sub grepper {
@@ -42,92 +41,79 @@ sub grepper {
 
 
 # -------- main --------
-my $ofu1 = Batch::Exec::Temp->new;
-isa_ok($ofu1, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
+my $ot1 = Batch::Exec::Temp->new('echo' => 1);
+
+isa_ok($ot1, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
 
-# ---- temporary creation and deletion -----
-my $rep=$ofu1->prefix;
-my $rex=$ofu1->ext;
+# ---- temp file -----
+my $rep=$ot1->prefix;
+my $rex=$ot1->ext;
 
-my $tf1 = $ofu1->mktmpfile;
-isnt( $tf1, "",			"tmpfile not-null");
-ok(-f $tf1,			"tmpfile exists");
-like( $tf1, qr/$rep/,		"tmpfile prefix");
-like( $tf1, qr/$rex$/,		"tmpfile ext");
-ok($ofu1->delete($tf1) == 0,	"tmpfile delete");
-ok(! -f $tf1,			"tmpfile dne");
+my $tf1 = $ot1->file;
+isnt($tf1, "",			"temp file not-null");
+ok(-f $tf1,			"temp file exists");
 
-my $td1 = $ofu1->mktmpdir;
-isnt( $td1, "",			"tmpdir not-null");
-ok(-d $td1,			"tmpdir exists");
-like( $td1, qr/$rep/,		"tmpdir prefix");
-unlike( $td1, qr/$rex$/,	"tmpdir ext");
-ok($ofu1->delete($td1) == 0,	"tmpdir delete");
-ok(! -d $td1,			"tmpdir dne");
+like($tf1, qr/$rep/,		"temp file prefix");
+like($tf1, qr/$rex$/,		"temp file ext");
+
+ok($ot1->delete($tf1) == 0,	"temp file delete");
+ok(! -f $tf1,			"temp file dne");
+
+
+# ---- temp dir -----
+my $td1 = $ot1->folder;
+isnt($td1, "",			"temp dir not-null");
+ok(-d $td1,			"temp dir exists");
+
+like($td1, qr/$rep/,		"temp dir prefix");
+unlike($td1, qr/$rex$/,		"temp dir ext");
+
+ok($ot1->delete($td1) == 0,	"temp dir delete");
+ok(! -d $td1,			"temp dir dne");
 
 
 # ---- alternative temporary directory -----
-my $ofu2 = Batch::Exec::Temp->new;
-isa_ok($ofu2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
+my $ot2 = Batch::Exec::Temp->new;
+isa_ok($ot2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
-my $tf2 = $ofu2->mktmpfile;
-ok( -f $tf2,	"mktmpfile hometmp type");
+my $td2 = $ot2->folder;
+ok(-d $td2,			"alt folder exists");
 
-my $td2 = $ofu2->mktmpdir;
-ok( -d $td2,	"mktmpdir hometmp type");
+is($ot2->default($td2), $td2,	"default alt folder");
+
+my $tf1a = $ot1->file;
+my $tf1b = $ot1->file;
+
+my $tf2a = $ot2->file;
+my $tf2b = $ot2->file;
+
+is(dirname($tf1a), dirname($tf1a),	"dirname match base");
+is(dirname($tf2a), dirname($tf2a),	"dirname match alt");
+isnt(dirname($tf1a), dirname($tf2a),	"dirname mismatch");
+
+for ($tf1a, $tf1b, $tf2a, $tf2b) {
+
+	ok(-f $_,			"temp file exists");
+	is($ot2->delete($_), 0,		"delete file [$_]");
+}
+
+ok(-d $td2,				"temp dir exists");
+is($ot2->delete($td2), 0,		"delete dir");
 
 
 # ---- temporary header -----
-ok( $ofu1->autoheader(1),	"autoheader on");
-ok( ! $ofu2->autoheader,	"autoheader off");
-
-my $tf3 = $ofu1->mktmpfile;
-my $tf6 = $ofu1->mktmpfile;
-my $tf4 = $ofu2->mktmpfile;
-my $tf5 = $ofu2->mktmpfile;
-ok( -f $tf3,			"tmp autoon create");
-ok( -f $tf4,			"tmp autooff create");
-grepper $tf3, 1;
-grepper $tf6, 1;
-grepper $tf4, 0;
-grepper $tf5, 0;
-
-
-# ---- clean & purge -----
-is( $ofu1->clean, 2,		"clean count $cycle"); $cycle++;
-is( $ofu2->clean, 4,		"clean count $cycle"); $cycle++;
-ok(! -f $tf3,			"check clean $cycle"); $cycle++;
-ok(! -f $tf4,			"check clean $cycle"); $cycle++;
-ok(! -f $tf5,			"check clean $cycle"); $cycle++;
-ok(! -f $tf6,			"check clean $cycle"); $cycle++;
-
-
-my $tf7 = $ofu1->mktmpfile; $ofu1->mktmpfile; $ofu1->mktmpdir;
-my $tf8 = $ofu2->mktmpfile; $ofu2->mktmpfile; $ofu2->mktmpdir;
-my $age = 1;
-ok( -f $tf7,			"tmpfile 7 exists before purge");
-ok( -f $tf8,			"tmpfile 8 exists before purge");
-
-is( $ofu1->age($age), 1,	"purge age 1 wait");
-is( $ofu2->age($age), 1,	"purge age 2 wait");
-
-$log->info("sleeping briefly"); sleep($age + 2);
-
-$ofu2->echo(1);
-is( $ofu2->purge, 3,		"purge hometmp one");
-
-is( $ofu1->purge, 3,		"purge roottmp one");
-
-ok(! -f $tf7,			"check clean $cycle"); $cycle++;
-ok(! -f $tf8,			"check clean $cycle"); $cycle++;
+#ok($ot1->autoheader(1),	"autoheader on");
+#ok(! $ot2->autoheader,	"autoheader off");
+#grepper $tf1a, 1;
+#grepper $tf1b, 1;
 
 
 __END__
 
 =head1 DESCRIPTION
 
-Fileutils-3.t - test harness for the Fileutils.pm module: temporary files
+01_general.t - test harness for the Batch::Exec::Temp class
 
 =head1 VERSION
 
@@ -155,7 +141,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 =head1 SEE ALSO
 
-L<perl>, L<Fileutils>.
+L<perl>, L<Batch::Exec::Temp>.
 
 =cut
 

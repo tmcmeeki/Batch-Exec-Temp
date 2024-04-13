@@ -1,6 +1,13 @@
 Revision history for Perl extension Batch::Exec::Temp.
 
+TO-DO:
+
 0.01  Tue Apr  2 21:24:06 2024
+	- Have resolved the "prefix" default of "basename" (now in Batch::Exec)
+
+	- NOTE the following methods attributes removed:
+		hometmp() use the Batch::Exec::Path class' home method.
+
 	- original version; created by h2xs 1.23 with options
 		-AX --skip-exporter --use-new-tests -n Batch::Exec::Temp -b 5.10.0
 
