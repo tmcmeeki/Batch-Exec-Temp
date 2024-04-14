@@ -301,7 +301,7 @@ sub generate {
 		$self->log->logconfess("FATAL invalid type [$type]");
 	}
 
-	$self->log->debug("type [$type] pn [$pn]");
+	$self->log->trace("type [$type] pn [$pn]");
 
 	return $pn;
 }
@@ -322,16 +322,20 @@ sub purge {
 
 	$rep =~ s/[\.\-]/\\$&/g;
 
-	$self->log->debug("now [$now] dn [$dn] rep [$rep]");
+	$self->log->trace("now [$now] dn [$dn] rep [$rep]")
+		if ($self->Alive);
 
 	my $prep = sub { # pre-process for name matches (strings not files!)
 
-		$self->log->trace(sprintf "prep rep [$rep] argv [%s]", Dumper(\@_));
+		$self->log->trace(sprintf "prep rep [$rep] argv [%s]", Dumper(\@_))
+			if ($self->Alive);
+
 		my @valid; for (@_) {
 
 			push @valid, $_ if ($_ =~ /^$rep/);
 		}
-		$self->log->debug(sprintf "prep valid [%s]", Dumper(\@valid));
+		$self->log->trace(sprintf "prep valid [%s]", Dumper(\@valid))
+			if ($self->Alive);
 
 		return @valid;
 	};
@@ -342,7 +346,8 @@ sub purge {
 
 		return unless (-f $pn || -d $pn);
 
-		$self->log->debug("matched [$pn]");
+		$self->log->trace("name match [$pn]")
+			if ($self->Alive);
 
 		my ($atime,$mtime, $ctime) = (stat($pn))[8..10];
 
@@ -350,13 +355,16 @@ sub purge {
 
 		if ($self->Alive) {
 
-			$self->log->debug("now [$now] atime [$atime] ctime [$ctime] mtime [$mtime]");
+			$self->log->trace("now [$now] atime [$atime] ctime [$ctime] mtime [$mtime]");
 
-			$self->log->debug(sprintf "age [$age] threshold [%d]", $self->age);
+			$self->log->trace(sprintf "age [$age] threshold [%d]", $self->age);
 		}
 
 		if ($age > $self->age) {
 			$count++ unless ($self->delete($pn));
+#		} else {
+#			$self->log->debug("SKIPPING purge [$pn]")
+#				if ($self->Alive);
 		}
 	};
 	return 0 unless ($self->is_rwx($dn));
@@ -393,7 +401,7 @@ sub register {
 		$self->{'_tmpfile'} = [ $pn ];
 	}
 
-	$self->log->debug(sprintf "registered [$pn] in [%s]", Dumper($self->{'_tmpfile'}));
+	$self->log->trace(sprintf "registered [$pn] in [%s]", Dumper($self->{'_tmpfile'}));
 
 	return $pn;
 }

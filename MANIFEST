@@ -1,6 +1,12 @@
+Batch-Exec-Temp_audit.txt
 Changes
-Makefile.PL
+IDE_VERSION
+LICENSE
 MANIFEST
+Makefile.PL
 README
-t/Batch-Exec-Temp.t
+README.md
 lib/Batch/Exec/Temp.pm
+t/00_basic.t
+t/01_general.t
+t/02_bulk.t

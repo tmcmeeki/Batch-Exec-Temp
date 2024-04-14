@@ -7,7 +7,7 @@ use strict;
 use Data::Compare;
 use Data::Dumper;
 use Logfer qw/ :all /;
-use Test::More tests => 35;
+use Test::More tests => 51;
 
 BEGIN { use_ok('Batch::Exec::Temp') };
 
@@ -17,41 +17,104 @@ BEGIN { use_ok('Batch::Exec::Temp') };
 # -------- global variables --------
 my $log = get_logger(__FILE__);
 my $cycle = 1;
+my $age = 1;
+my $wait = $age * 3;
+my $max = 3;
+
 
 # -------- sub-routines --------
 
 # -------- main --------
-my $ot1 = Batch::Exec::Temp->new('echo' => 1);
+my $ot1 = Batch::Exec::Temp->new('echo' => 1, 'retain' => 1);
+my $ot2 = Batch::Exec::Temp->new('echo' => 1, 'age' => $age);
 
 isa_ok($ot1, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
-
-# ---- clean & purge -----
-is($ot1->clean, 2,		"clean count $cycle"); $cycle++;
-is($ot2->clean, 4,		"clean count $cycle"); $cycle++;
-ok(! -f $tf3,			"check clean $cycle"); $cycle++;
-ok(! -f $tf4,			"check clean $cycle"); $cycle++;
-ok(! -f $tf5,			"check clean $cycle"); $cycle++;
-ok(! -f $tf6,			"check clean $cycle"); $cycle++;
+isa_ok($ot2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
 
-my $tf7 = $ot1->file; $ot1->file; $ot1->folder;
-my $tf8 = $ot2->file; $ot2->file; $ot2->folder;
-my $age = 1;
-ok(-f $tf7,			"temp file 7 exists before purge");
-ok(-f $tf8,			"temp file 8 exists before purge");
+# ---- clean -----
+my $expected = $max * 2;	# will create max files and max folders
+my @temps;
 
-is($ot1->age($age), 1,	"purge age 1 wait");
-is($ot2->age($age), 1,	"purge age 2 wait");
+for (my $ss = 0; $ss < $max; $ss++) {
 
-$log->info("sleeping briefly"); sleep($age + 2);
+	push @temps, $ot1->file;
+	push @temps, $ot2->file;
 
-$ot2->echo(1);
-is($ot2->purge, 3,		"purge hometmp one");
+	push @temps, $ot1->folder;
+	push @temps, $ot2->folder;
+}
 
-is($ot1->purge, 3,		"purge roottmp one");
+for (my $ss = 0; $ss < @temps; $ss++) {
 
-ok(! -f $tf7,			"check clean $cycle"); $cycle++;
-ok(! -f $tf8,			"check clean $cycle"); $cycle++;
+	ok(-e $temps[$ss],	"exists clean $cycle");
+
+	$cycle++;
+}
+
+is($ot1->clean, $expected,	"clean count $cycle"); $cycle++;
+is($ot2->clean, $expected,	"clean count $cycle"); $cycle++;
+
+for (my $ss = 0; $ss < @temps; $ss++) {
+
+	ok(! -e $temps[$ss],	"gone clean $cycle");
+
+	$cycle++;
+}
+
+
+# ---- purge -----
+$expected = $max * 4;	# first object will retain so second object has double
+my @temp1 = ();
+my @temp2 = ();
+
+isnt($ot1->age, $age,	"purge age $cycle"); $cycle++;
+is($ot2->age, $age,	"purge age $cycle"); $cycle++;
+
+for (my $ss = 0; $ss < $max; $ss++) {
+
+	push @temp1, $ot1->file;
+	push @temp2, $ot2->file;
+
+	push @temp1, $ot1->folder;
+	push @temp2, $ot2->folder;
+}
+
+$log->info("sleeping for $wait seconds"); sleep($wait);
+
+for (my $ss = 0; $ss < @temp1; $ss++) {
+
+	ok(-e $temp1[$ss],	"exists purge $cycle");
+
+	$cycle++;
+}
+
+$log->info("expecting retain");
+is($ot1->purge, 0,	"purge count $cycle"); $cycle++;
+
+$ot1 = ();	# force a purge, but no deletions because of retain...
+
+#... so all temp files should still exist
+
+for (my $ss = 0; $ss < @temp1; $ss++) {
+
+	ok(-e $temp1[$ss],	"exists purge $cycle");
+
+	$cycle++;
+}
+
+for (my $ss = 0; $ss < @temp2; $ss++) {
+
+	ok(-e $temp2[$ss],	"exists purge $cycle");
+
+	$cycle++;
+}
+
+# now expecting double the number of files to be purged.
+
+$log->info("expecting purge");
+is($ot2->purge, $expected,	"purge count $cycle"); $cycle++;
+
 
 __END__
 
