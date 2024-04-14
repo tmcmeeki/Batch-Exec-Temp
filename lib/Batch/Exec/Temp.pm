@@ -33,6 +33,10 @@ Get ot set the extension for temporary filenames.  A default applies.
 
 Get ot set automatic purge boolean.  A default applies: false.
 
+=item OBJ->template
+
+The temporary template (characters to use for uniqueness).  A default applies.
+
 =back
 
 =cut
@@ -69,7 +73,7 @@ our $VERSION = sprintf "%d.%03d", q[_IDE_REVISION_] =~ /(\d+)/g;
 my $_n_objects = 0;
 
 my %_attribute = (	# _attributes are restricted; no direct get/set
-	_tmpfile => undef,      # a hash of temp files
+	_tmpfile => undef,      # an array of temp files
 	_tmpdir => undef,
 	age => PURGE_AGE,
 	ext => EXT_TMP,
@@ -146,7 +150,43 @@ sub new {
 	# ___ additional class initialisation here ___
 	$self->reset;
 
+	$self->{'_tmpfile'} = [];
+
 	return $self;
+}
+
+=item OBJ->All
+
+Return an array of registered temporary objects.  Not all object may exist
+as such objects could be removed outside of the context of this class.
+
+=cut
+
+sub All {
+	my $self = shift;
+
+	$self->log->trace(sprintf "Id [%s] _tmpfile [%s]",
+		$self->Id, Dumper($self->{'_tmpfile'}));
+
+	return @{ $self->{'_tmpfile'} };
+}
+
+=item OBJ->Extant
+
+Return an array of existing temporary objects.
+
+=cut
+
+sub Extant {
+	my $self = shift;
+
+	my @extant; for my $pn ($self->All) {
+
+		push @extant, $pn
+			if (-e $pn);
+	}
+
+	return @extant;
 }
 
 =back
@@ -157,7 +197,7 @@ sub new {
 
 =item OBJ->clean
 
-Delete all temp files.
+Delete all temporary objects registered within the context of this object.
 
 =cut
 
@@ -165,29 +205,39 @@ sub clean {
 	my $self = shift;
 	my $count = 0;
 
-	$self->log->trace(sprintf "tmpdir [%s] Id [%s] _tmpfile [%s]", $self->tmpdir, $self->Id, Dumper($self->{'_tmpfile'}))
+	$self->log->trace(sprintf "tmpdir [%s] Id [%s]", $self->tmpdir, $self->Id)
 		if ($self->Alive);
 
-	return $count
-		unless (defined $self->{'_tmpfile'});
+	for my $pn ($self->Extant) {
 
-	while (my $pn = pop @{ $self->{'_tmpfile'} }) {
+		$count++ unless ($self->delete($pn));
 
-		next unless (-e $pn); # may have already been deleted elsewhere so check if it actually exists
-
-		if ($self->delete($pn)) {
-
-			push @{ $self->{'_tmpfile'} }, $pn;
-
-		} else {
-
-			$count++;
-		}
 	}
 	$self->log->info("$count temporary entries cleaned out")
 		if ($self->Alive && $self->echo);
 
 	return $count;
+}
+
+=item OBJ->count
+
+Return a count of extant temporary objects.
+
+=cut
+
+sub count {
+	my $self = shift;
+
+	my $count = scalar($self->All);
+	my $found = scalar($self->Extant);
+
+	my $msg = sprintf "Id [%s] objects registered [%d] found [%s]",
+		$self->Id, $count, $found;
+
+	$self->log->info($msg)
+		if ($self->Alive && $self->echo);
+
+	return $found;
 }
 
 =item OBJ->default([EXPR])
@@ -228,7 +278,7 @@ sub default {
 
 =item OBJ->file
 
-Convenience function to generate a unique temporary file name.
+Convenience function to register a unique temporary file name.
 An empty file will will be created and the pathname to it returned.
 
 =cut
@@ -237,8 +287,9 @@ sub file {
 	my $self = shift;
 
 	my $pn = $self->register('f');
+	my $msg = sprintf "Id [%s] created temporary file [$pn]", $self->Id;
 
-	$self->log->info("created temporary file [$pn]")
+	$self->log->info($msg)
 		if ($self->echo);
 
 	return $pn;
@@ -246,7 +297,7 @@ sub file {
 
 =item OBJ->folder
 
-Convenience function to generate a unique temporary folder name.
+Convenience function to register a unique temporary folder name.
 A folder will will be created and the pathname to it returned.
 
 =cut
@@ -255,26 +306,27 @@ sub folder {
 	my $self = shift;
 
 	my $dn = $self->register('d');
+	my $msg = sprintf "Id [%s] created temporary folder [$dn]", $self->Id;
 
-	$self->log->info("created temporary directory [$dn]")
+	$self->log->info($msg)
 		if ($self->echo);
 
 	return $dn;
 }
 
-=item OBJ->generate(EXPR)
+=item OBJ->register(EXPR)
 
-Generates the pathname for a temporary file or directory based on the EXPR
-passed, which is(either 'f' or 'd').
+Generates, creates and registers the pathname for a temporary
+file or directory based on the EXPR passed, which must be 'f' or 'd'.
 
 Returns a pathname.
 
 =cut
 
-sub generate {
+sub register {
 	my $self = shift;
 	my $type = shift;
-	confess "SYNTAX: generate(EXPR)" unless (defined $type);
+	confess "SYNTAX: register(EXPR)" unless (defined $type);
 	my $pn;
 
 	#my $tpl = join('.', $self->prefix . $self->ext, $self->template);
@@ -302,6 +354,8 @@ sub generate {
 	}
 
 	$self->log->trace("type [$type] pn [$pn]");
+
+	push @{ $self->{'_tmpfile'} }, $pn;
 
 	return $pn;
 }
@@ -378,32 +432,6 @@ sub purge {
 		if ($self->Alive);
 
 	return $count;
-}
-
-=item OBJ->register
-
-Add description here
-
-=cut
-
-sub register {
-	my $self = shift;
-	my $type = shift;
-	confess "SYNTAX: register(EXPR)" unless defined ($type);
-
-	my $pn = $self->generate($type);
-
-	if (defined $self->{'_tmpfile'}) {
-
-		push @{ $self->{'_tmpfile'} }, $pn;
-
-	} else {
-		$self->{'_tmpfile'} = [ $pn ];
-	}
-
-	$self->log->trace(sprintf "registered [$pn] in [%s]", Dumper($self->{'_tmpfile'}));
-
-	return $pn;
 }
 
 =item OBJ->reset

@@ -5,9 +5,10 @@
 use strict;
 
 use Data::Dumper;
+use File::Spec;
 use Logfer qw/ :all /;
 #use Log::Log4perl qw/ :easy /;
-use Test::More tests => 101;
+use Test::More tests => 116;
 
 BEGIN { use_ok('Batch::Exec::Temp') };
 
@@ -25,22 +26,22 @@ my $cycle = 1;
 
 
 # -------- main --------
-my $obt1 = Batch::Exec::Temp->new;
-isa_ok($obt1, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
+my $ot1 = Batch::Exec::Temp->new;
+isa_ok($ot1, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
-my $obt2 = Batch::Exec::Temp->new(echo => 1, fatal => 0);
-isa_ok($obt2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
+my $ot2 = Batch::Exec::Temp->new(echo => 1, fatal => 0);
+isa_ok($ot2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
 
 # -------- simple attributes --------
-my @attr = $obt1->Attributes;
+my @attr = $ot1->Attributes;
 my $attrs = 21;
 is(scalar(@attr), $attrs,		"class attributes");
 is(shift @attr, "Batch::Exec::Temp",	"class okay");
 
 for my $attr (@attr) {
 
-	my $dfl = $obt1->$attr;
+	my $dfl = $ot1->$attr;
 
 	my ($set, $type); if (defined $dfl && $dfl =~ /^[\-\d\.]+$/) {
 		$set = -1.1;
@@ -50,61 +51,101 @@ for my $attr (@attr) {
 		$type = "s";
 	}
 
-	is($obt1->$attr($set), $set,	"$attr set cycle $cycle");
-	isnt($obt1->$attr, $dfl,	"$attr check");
+	is($ot1->$attr($set), $set,	"$attr set cycle $cycle");
+	isnt($ot1->$attr, $dfl,	"$attr check");
 
-	$log->debug(sprintf "attr [$attr]=%s", $obt1->$attr);
+	$log->debug(sprintf "attr [$attr]=%s", $ot1->$attr);
 
 	if ($type eq "s") {
 		my $ck = (defined $dfl) ? $dfl : "_null_";
 
-		ok($obt1->$attr ne $ck,	"$attr string");
+		ok($ot1->$attr ne $ck,	"$attr string");
 	} else {
-		ok($obt1->$attr < 0,	"$attr number");
+		ok($ot1->$attr < 0,	"$attr number");
 	}
-	is($obt1->$attr($dfl), $dfl,	"$attr reset");
+	is($ot1->$attr($dfl), $dfl,	"$attr reset");
 
         $cycle++;
 }
 
 
 # -------- Inherit --------
-is($obt1->Inherit($obt2), $attrs - 1,	"inherit same attribute count");
+is($ot1->Inherit($ot2), $attrs - 1,	"inherit same attribute count");
 
 
 # ---- miscellaneous defaults -----
-ok($obt1->age > 0,		"age default");
-like($obt1->ext, qr/tmp/,	"ext default");
-is($obt1->retain, 0,		"retain default");
+ok($ot1->age > 0,		"age default");
+like($ot1->ext, qr/tmp/,	"ext default");
+is($ot1->retain, 0,		"retain default");
 
 
 # ---- tmpdir -----
-my $dn_reset = $obt2->tmpdir;
+my $dn_reset = $ot2->tmpdir;
 my $dn_valid = ".";
 my $dn_inval = '_$$$_';
 
-ok(-d $obt2->tmpdir,		"tmpdir default exists");
+ok(-d $ot2->tmpdir,		"tmpdir default exists");
 ok(-d $dn_valid,		"tmpdir override exists");
 
-ok($obt2->tmpdir($dn_valid),	"tmpdir is read-only");
+ok($ot2->tmpdir($dn_valid),	"tmpdir is read-only");
 
 
 # ---- reset -----
-is($obt1->reset, $dn_reset,		"reset to default");
-is($obt1->reset, $obt2->reset,		"reset matches");
+is($ot1->reset, $dn_reset,		"reset to default");
+is($ot1->reset, $ot2->reset,		"reset matches");
 
 
 # ---- default -----
-ok(-d $obt2->default,			"default resets default");
-isnt($obt2->default, $dn_inval,		"check default");
+ok(-d $ot2->default,			"default resets default");
+isnt($ot2->default, $dn_inval,		"check default");
 
-ok(-d $obt2->default($dn_valid),	"override valid default");
-ok(-d $obt2->default($dn_inval),	"override invalid default");
-ok(-d $obt2->tmpdir,			"default reset with valid");
+ok(-d $ot2->default($dn_valid),	"override valid default");
+ok(-d $ot2->default($dn_inval),	"override invalid default");
+ok(-d $ot2->tmpdir,			"default reset with valid");
 
-is($obt2->tmpdir, $dn_reset,		"check default reset");
-is($obt1->tmpdir, $obt2->tmpdir,	"default reset matches");
+is($ot2->tmpdir, $dn_reset,		"check default reset");
+is($ot1->tmpdir, $ot2->tmpdir,	"default reset matches");
 
+
+# ---- All and Extant before -----
+is(scalar($ot1->All), 0,		"All zero");
+is(scalar($ot1->Extant), 0,		"Extant zero");
+
+
+# ---- register -----
+my @match = File::Spec->splitdir($ot1->tmpdir);
+my $redm = pop @match;
+
+my $pn = $ot1->register('f');
+like($pn, qr/$redm/,		"register file");
+ok(-f $pn,			"file exists");
+is($ot1->delete($pn), 0,	"file removed");
+
+$pn = $ot1->register('d');
+like($pn, qr/$redm/,		"register folder");
+ok(-d $pn,			"folder exists");
+
+SKIP: {
+	skip "invalid register option", 1;
+
+	my $pn = $ot1->register();
+}
+
+# ---- All and Extant after -----
+is(scalar($ot1->All), 2,		"All nonzero");
+is(scalar($ot1->Extant), 1,		"Extant nonzero");
+
+#$log->debug(sprintf "ot1 [%s]", Dumper($ot1));
+
+
+# ---- count -----
+is($ot1->count, 1,		"count");
+
+is($ot1->delete($pn), 0,	"folder removed");
+
+is(scalar($ot1->All), 2,	"All still nonzero");
+is(scalar($ot1->Extant), 0,	"Extant zero again");
+is($ot1->count, 0,		"final count zero");
 
 __END__
 

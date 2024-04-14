@@ -7,7 +7,7 @@ use strict;
 use Data::Compare;
 use Data::Dumper;
 use Logfer qw/ :all /;
-use Test::More tests => 51;
+use Test::More tests => 55;
 
 BEGIN { use_ok('Batch::Exec::Temp') };
 
@@ -52,7 +52,9 @@ for (my $ss = 0; $ss < @temps; $ss++) {
 	$cycle++;
 }
 
+is($ot1->count, $expected,	"count nonzero $cycle"); $cycle++;
 is($ot1->clean, $expected,	"clean count $cycle"); $cycle++;
+is($ot2->count, $expected,	"count nonzero $cycle"); $cycle++;
 is($ot2->clean, $expected,	"clean count $cycle"); $cycle++;
 
 for (my $ss = 0; $ss < @temps; $ss++) {
@@ -61,6 +63,9 @@ for (my $ss = 0; $ss < @temps; $ss++) {
 
 	$cycle++;
 }
+
+is($ot1->count, 0,		"count zero $cycle"); $cycle++;
+is($ot2->count, 0,		"count zero $cycle"); $cycle++;
 
 
 # ---- purge -----
