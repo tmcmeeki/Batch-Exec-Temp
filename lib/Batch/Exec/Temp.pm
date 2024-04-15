@@ -12,10 +12,27 @@ Copyright (C) 2024  B<Tom McMeekin> tmcmeeki@cpan.org
 
   use Batch::Exec::Temp;
 
+  my $ot1 = Batch::Exec::Temp->new('retain' => 1);
+
+  my $ot2 = Batch::Exec::Temp->new('age' => 21600);	# six hours
+
+  my $path1 = $ot1->file;
+  my $path2 = $ot1->file;
+
+  my $dir1 = $ot1->folder;
+  my $dir2 = $ot2->folder;
+
+  printf "found %d temporary objects\n", $ot1->count;
+
 
 =head1 DESCRIPTION
 
-Temporary file and folder handling.
+Temporary object handling.  Utilises File::Temp to generate and create
+temporary files and folders.  These are registered for the duration of the 
+program and cleaned at the end (unless the retain flag is set).
+
+In addition, older files which have been retained but are beyond the specified
+retention age are searched for and removed.
 
 =head2 ATTRIBUTES
 
@@ -339,9 +356,7 @@ sub register {
 		my $fh;
 
 		($fh,$pn) = tempfile($tpl, DIR => $self->tmpdir, SUFFIX => $self->ext);
-#	don't think we need this for temp files; maybe just output files
-#		$self->header($fh)
-#			if ($self->{'autoheader'});
+		$self->header($fh);
 
 		close($fh);	# don't need this open
 
@@ -488,7 +503,6 @@ The following method aliases have also been defined:
 
 __END__
 
-
 =head1 VERSION
 
 _IDE_REVISION_
@@ -510,7 +524,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 =head1 SEE ALSO
 
-L<perl>.
+L<perl>, L<File::Find>, L<File::Spec>, L<File::Temp>.
 
 =cut
 

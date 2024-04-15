@@ -8,7 +8,7 @@ use Data::Compare;
 use Data::Dumper;
 use File::Basename;
 use Logfer qw/ :all /;
-use Test::More tests => 30;
+use Test::More tests => 40;
 
 BEGIN { use_ok('Batch::Exec::Temp') };
 
@@ -25,6 +25,8 @@ sub grepper {
 	my $expected = shift;
 	my $re = shift;
 
+	ok(-f $fn, 				"exists grepper $cycle");
+
 	my $desc; if (defined($re)) {
 		$desc = "grep $re";
 	} else {
@@ -33,9 +35,13 @@ sub grepper {
 	}
 
 	open(my $fh, "<$fn");
+
 	my $found = 0; while (<$fh>) { $found += grep(/$re/, $_); }
+
 	close($fh);
+
 	is($found, $expected,			"$desc cycle $cycle");
+
 	$cycle++;
 }
 
@@ -103,10 +109,20 @@ is($ot2->delete($td2), 0,		"delete dir");
 
 
 # ---- temporary header -----
-#ok($ot1->autoheader(1),	"autoheader on");
-#ok(! $ot2->autoheader,	"autoheader off");
-#grepper $tf1a, 1;
-#grepper $tf1b, 1;
+ok($ot1->autoheader(1),			"autoheader on");
+my $ah1 = $ot1->file;
+grepper $ah1, 1;
+is($ot1->delete($ah1), 0,		"delete ahon");
+
+
+like($ot2->reset, qr/tmp/,		"reset tmp");
+is($ot1->tmpdir, $ot2->tmpdir,		"reset match");
+
+
+my $ah2 = $ot2->file;
+ok(! $ot2->autoheader,			"autoheader off");
+grepper $ah2, 0;
+is($ot2->delete($ah2), 0,		"delete ahoff");
 
 
 __END__

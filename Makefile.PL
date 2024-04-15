@@ -10,6 +10,7 @@ WriteMakefile(
     NAME              => 'Batch::Exec::Temp',
     VERSION_FROM      => 'lib/Batch/Exec/Temp.pm', # finds $VERSION, requires EU::MM from perl >= 5.5
     PREREQ_PM         => {
+	'Batch::Exec' => '1.013',
         'Carp' => '0',
         'Data::Dumper' => '0',
         'Log::Log4perl' => '0',

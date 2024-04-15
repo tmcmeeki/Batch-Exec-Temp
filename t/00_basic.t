@@ -8,7 +8,7 @@ use Data::Dumper;
 use File::Spec;
 use Logfer qw/ :all /;
 #use Log::Log4perl qw/ :easy /;
-use Test::More tests => 116;
+use Test::More tests => 120;
 
 BEGIN { use_ok('Batch::Exec::Temp') };
 
@@ -35,7 +35,7 @@ isa_ok($ot2, "Batch::Exec::Temp",	"class check $cycle"); $cycle++;
 
 # -------- simple attributes --------
 my @attr = $ot1->Attributes;
-my $attrs = 21;
+my $attrs = 22;
 is(scalar(@attr), $attrs,		"class attributes");
 is(shift @attr, "Batch::Exec::Temp",	"class okay");
 
